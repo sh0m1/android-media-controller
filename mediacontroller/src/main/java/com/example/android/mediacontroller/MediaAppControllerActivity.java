@@ -34,6 +34,7 @@ import android.support.annotation.Nullable;
 import android.support.annotation.StringRes;
 import android.support.design.widget.Snackbar;
 import android.support.design.widget.TabLayout;
+import android.support.v4.content.ContextCompat;
 import android.support.v4.graphics.drawable.DrawableCompat;
 import android.support.v4.media.MediaBrowserCompat;
 import android.support.v4.media.MediaBrowserServiceCompat;
@@ -147,18 +148,18 @@ public class MediaAppControllerActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_media_app_controller);
-        final Toolbar toolbar = (Toolbar) findViewById(R.id.toolbar);
+        final Toolbar toolbar = findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
 
         mRootView = findViewById(R.id.root_view);
-        mInputTypeView = (Spinner) findViewById(R.id.input_type);
-        mUriInput = (EditText) findViewById(R.id.uri_id_query);
-        mMediaInfoText = (TextView) findViewById(R.id.media_info);
+        mInputTypeView = findViewById(R.id.input_type);
+        mUriInput = findViewById(R.id.uri_id_query);
+        mMediaInfoText = findViewById(R.id.media_info);
 
-        mMediaAlbumArtView = (ImageView) findViewById(R.id.media_art);
-        mMediaTitleView = (TextView) findViewById(R.id.media_title);
-        mMediaArtistView = (TextView) findViewById(R.id.media_artist);
-        mMediaAlbumView = (TextView) findViewById(R.id.media_album);
+        mMediaAlbumArtView = findViewById(R.id.media_art);
+        mMediaTitleView = findViewById(R.id.media_title);
+        mMediaArtistView = findViewById(R.id.media_artist);
+        mMediaAlbumView = findViewById(R.id.media_album);
 
         if (savedInstanceState != null) {
             mMediaAppDetails = savedInstanceState.getParcelable(STATE_APP_DETAILS_KEY);
@@ -177,7 +178,7 @@ public class MediaAppControllerActivity extends AppCompatActivity {
             actionBar.setTitle(mMediaAppDetails.appName);
         }
 
-        final ViewPager viewPager = (ViewPager) findViewById(R.id.view_pager);
+        final ViewPager viewPager = findViewById(R.id.view_pager);
         viewPager.setAdapter(new PagerAdapter() {
             private final int[] pages = {
                     R.id.prepare_play_page,
@@ -190,16 +191,17 @@ public class MediaAppControllerActivity extends AppCompatActivity {
             }
 
             @Override
-            public boolean isViewFromObject(View view, Object object) {
+            public boolean isViewFromObject(@NonNull View view, @NonNull Object object) {
                 return view == object;
             }
 
+            @NonNull
             @Override
-            public Object instantiateItem(ViewGroup container, int position) {
+            public Object instantiateItem(@NonNull ViewGroup container, int position) {
                 return findViewById(pages[position]);
             }
         });
-        final TabLayout pageIndicator = (TabLayout) findViewById(R.id.page_indicator);
+        final TabLayout pageIndicator = findViewById(R.id.page_indicator);
         pageIndicator.setupWithViewPager(viewPager);
     }
 
@@ -301,7 +303,7 @@ public class MediaAppControllerActivity extends AppCompatActivity {
         }
 
         mBrowser = new MediaBrowserCompat(this, mMediaAppDetails.mediaServiceComponentName,
-                new MyConnectionCallback(), null);
+                new MyConnectionCallback(this), null);
         mBrowser.connect();
     }
 
@@ -337,20 +339,17 @@ public class MediaAppControllerActivity extends AppCompatActivity {
         findViewById(R.id.action_play).setOnClickListener(preparePlayHandler);
 
         mAudioFocusHelper = new AudioFocusHelper(this,
-                (ToggleButton) findViewById(R.id.audio_focus_button),
-                (Spinner) findViewById(R.id.audio_focus_type));
+                findViewById(R.id.audio_focus_button),
+                findViewById(R.id.audio_focus_type));
 
         mActionButtonMap.clear();
         final List<Action> mediaActions = Action.createActions(this);
         for (final Action action : mediaActions) {
             final View button = findViewById(action.getId());
-            button.setOnClickListener(new View.OnClickListener() {
-                @Override
-                public void onClick(View view) {
-                    if (mController != null) {
-                        String id = mUriInput.getText().toString();
-                        action.getMediaControllerAction().run(mController, id, null);
-                    }
+            button.setOnClickListener(view -> {
+                if (mController != null) {
+                    String id = mUriInput.getText().toString();
+                    action.getMediaControllerAction().run(mController, id, null);
                 }
             });
             mActionButtonMap.put(action.getId(), (ImageButton) button);
@@ -397,7 +396,14 @@ public class MediaAppControllerActivity extends AppCompatActivity {
                     mediaMetadata.getString(MediaMetadataCompat.METADATA_KEY_ALBUM));
 
             final Bitmap art = mediaMetadata.getBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART);
-            mMediaAlbumArtView.setImageBitmap(art);
+            if (art != null) {
+                mMediaAlbumArtView.setImageBitmap(art);
+            } else {
+                mMediaAlbumArtView.setImageResource(R.drawable.ic_album_black_24dp);
+            }
+        } else {
+            mMediaArtistView.setText(R.string.media_info_default);
+            mMediaAlbumArtView.setImageResource(R.drawable.ic_album_black_24dp);
         }
 
         final long actions = playbackState.getActions();
@@ -533,9 +539,13 @@ public class MediaAppControllerActivity extends AppCompatActivity {
     }
 
     private class MyConnectionCallback extends MediaBrowserCompat.ConnectionCallback {
+        private final Context mContext;
         private final SparseArray<Long> mActionViewIdMap;
+        private final ImageButton mShuffleToggle;
 
-        MyConnectionCallback() {
+        MyConnectionCallback(@NonNull Context context) {
+            mContext = context;
+
             mActionViewIdMap = new SparseArray<>();
             mActionViewIdMap.put(R.id.action_skip_previous,
                     PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS);
@@ -549,6 +559,11 @@ public class MediaAppControllerActivity extends AppCompatActivity {
             // They're the same action, but each of the buttons should be colored anyway.
             mActionViewIdMap.put(R.id.action_skip_30s_backward, PlaybackStateCompat.ACTION_SEEK_TO);
             mActionViewIdMap.put(R.id.action_skip_30s_forward, PlaybackStateCompat.ACTION_SEEK_TO);
+
+            mActionViewIdMap.put(R.id.action_toggle_shuffle,
+                    PlaybackStateCompat.ACTION_SET_SHUFFLE_MODE);
+
+            mShuffleToggle = findViewById(R.id.action_toggle_shuffle);
         }
 
         @Override
@@ -610,12 +625,7 @@ public class MediaAppControllerActivity extends AppCompatActivity {
         private void showDisconnected(@StringRes final int stringResource) {
             final Snackbar snackbar =
                     Snackbar.make(mRootView, stringResource, Snackbar.LENGTH_INDEFINITE);
-            snackbar.setAction(R.string.reconnect, new View.OnClickListener() {
-                @Override
-                public void onClick(final View view) {
-                    setupMediaController();
-                }
-            });
+            snackbar.setAction(R.string.reconnect, view -> setupMediaController());
             snackbar.show();
         }
 
@@ -634,15 +644,25 @@ public class MediaAppControllerActivity extends AppCompatActivity {
                 final long action = mActionViewIdMap.valueAt(i);
 
                 final ImageButton button = mActionButtonMap.get(viewId);
-                DrawableCompat.setTint(button.getDrawable(), getTint(actions, action));
+                if (actionSupported(actions, action)) {
+                    button.setBackground(null);
+                } else {
+                    button.setBackgroundResource(R.drawable.bg_unsuported_action);
+                }
             }
+
+            final boolean shuffleEnabled =
+                    mController.getShuffleMode() == PlaybackStateCompat.SHUFFLE_MODE_ALL ||
+                            mController.getShuffleMode() == PlaybackStateCompat.SHUFFLE_MODE_GROUP;
+            final int shuffleTint = shuffleEnabled
+                    ? ContextCompat.getColor(mContext, R.color.colorPrimary)
+                    : ContextCompat.getColor(mContext, R.color.colorInactive);
+            DrawableCompat.setTint(mShuffleToggle.getDrawable(), shuffleTint);
         }
 
-        private int getTint(@PlaybackStateCompat.Actions long actions,
+        private boolean actionSupported(@PlaybackStateCompat.Actions long actions,
                             @PlaybackStateCompat.Actions long checkAction) {
-            return ((actions & checkAction) != 0)
-                    ? Color.WHITE
-                    : Color.RED;
+            return ((actions & checkAction) != 0);
         }
     }
 
